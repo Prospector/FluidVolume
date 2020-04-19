@@ -1,7 +1,6 @@
 package io.github.fablabsmc.fablabs.api.fluidvolume.v1;
 
 import com.mojang.datafixers.Dynamic;
-
 import net.minecraft.datafixer.NbtOps;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.fluid.Fluids;
@@ -9,131 +8,94 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.registry.Registry;
 
-import net.fabricmc.fabric.api.util.NbtType;
-
 public final class FluidVolume {
-	public static final FluidVolume EMPTY = new FluidVolume(Fluids.EMPTY);
+    public static final FluidVolume EMPTY = new FluidVolume(Fluids.EMPTY);
 
-	private Fluid fluid;
-	private Fraction amount;
-	private CompoundTag tag;
+    private Fluid fluid;
+    private Fraction amount;
 
-	private boolean empty;
+    private boolean empty;
 
-	public FluidVolume(Fluid fluid) {
-		this(fluid, Fraction.ONE);
-	}
+    public FluidVolume(Fluid fluid) {
+        this(fluid, Fraction.ONE);
+    }
 
-	public FluidVolume(Fluid fluid, Fraction amount) {
-		this.fluid = fluid;
-		this.amount = amount;
-		this.updateEmptyState();
-	}
+    public FluidVolume(Fluid fluid, Fraction amount) {
+        this.fluid = fluid;
+        this.amount = amount;
+        this.updateEmptyState();
+    }
 
-	private FluidVolume(CompoundTag tag) {
-		fluid = Registry.FLUID.get(new Identifier(tag.getString("Id")));
-		amount = Fraction.deserialize(new Dynamic<>(NbtOps.INSTANCE, tag.getCompound("Amount")));
+    private FluidVolume(CompoundTag tag) {
+        fluid = Registry.FLUID.get(new Identifier(tag.getString("Id")));
+        amount = Fraction.deserialize(new Dynamic<>(NbtOps.INSTANCE, tag.getCompound("Amount")));
 
-		if (tag.contains("Tag", NbtType.COMPOUND)) {
-			this.tag = tag.getCompound("Tag");
-		}
+        this.updateEmptyState();
+    }
 
-		this.updateEmptyState();
-	}
+    public Fluid getFluid() {
+        return empty ? Fluids.EMPTY : fluid;
+    }
 
-	public Fluid getFluid() {
-		return empty ? Fluids.EMPTY : fluid;
-	}
+    public Fraction getAmount() {
+        return empty ? Fraction.ZERO : amount;
+    }
 
-	public Fraction getAmount() {
-		return empty ? Fraction.ZERO : amount;
-	}
+    public boolean isEmpty() {
+        if (this == EMPTY) {
+            return true;
+        } else if (this.getFluid() != null && this.getFluid() != Fluids.EMPTY) {
+            return !this.amount.isPositive();
+        } else {
+            return true;
+        }
+    }
 
-	public boolean isEmpty() {
-		if (this == EMPTY) {
-			return true;
-		} else if (this.getFluid() != null && this.getFluid() != Fluids.EMPTY) {
-			return !this.amount.isPositive();
-		} else {
-			return true;
-		}
-	}
+    public void setAmount(Fraction amount) {
+        this.amount = amount;
+    }
 
-	public void setAmount(Fraction amount) {
-		this.amount = amount;
-	}
+    public void increment(Fraction incrementBy) {
+        amount = amount.add(incrementBy);
+    }
 
-	public void increment(Fraction incrementBy) {
-		amount = amount.add(incrementBy);
-	}
+    public void decrement(Fraction decrementBy) {
+        amount = amount.subtract(decrementBy);
+        if (amount.isNegative()) amount = Fraction.ZERO;
+    }
 
-	public void decrement(Fraction decrementBy) {
-		amount = amount.subtract(decrementBy);
-		if (amount.isNegative()) amount = Fraction.ZERO;
-	}
+    public FluidVolume split(Fraction amount) {
+        Fraction min = Fraction.min(amount, this.amount);
+        FluidVolume volume = this.copy();
+        volume.setAmount(min);
+        this.decrement(min);
+        return volume;
+    }
 
-	public FluidVolume split(Fraction amount) {
-		Fraction min = Fraction.min(amount, this.amount);
-		FluidVolume volume = this.copy();
-		volume.setAmount(min);
-		this.decrement(min);
-		return volume;
-	}
+    //TODO: better equality/stackability methods
+    public static boolean areFluidsEqual(FluidVolume left, FluidVolume right) {
+        return left.getFluid() == right.getFluid();
+    }
 
-	//TODO: better equality/stackability methods
-	public static boolean areFluidsEqual(FluidVolume left, FluidVolume right) {
-		return left.getFluid() == right.getFluid();
-	}
+    private void updateEmptyState() {
+        empty = isEmpty();
+    }
 
-	//public static boolean areCombinable(FluidVolume left, FluidVolume right) {
-	//	if (left == right) return true;
-	//	if (left.isEmpty() && right.isEmpty()) return true;
-	//}
+    public FluidVolume copy() {
+        if (this.isEmpty()) return FluidVolume.EMPTY;
+        FluidVolume stack = new FluidVolume(this.fluid, this.amount);
+        return stack;
+    }
 
-	private void updateEmptyState() {
-		empty = isEmpty();
-	}
+    public static FluidVolume fromTag(CompoundTag tag) {
+        return new FluidVolume(tag);
+    }
 
-	public boolean hasTag() {
-		return !empty && tag != null && !tag.isEmpty();
-	}
+    public CompoundTag toTag(CompoundTag tag) {
+        tag.putString("Id", Registry.FLUID.getId(getFluid()).toString());
 
-	public CompoundTag getTag() {
-		return tag;
-	}
+        tag.put("Amount", amount.serialize(NbtOps.INSTANCE));
 
-	public CompoundTag getOrCreateTag() {
-		if (tag == null) {
-			tag = new CompoundTag();
-		}
-
-		return tag;
-	}
-
-	public void setTag(CompoundTag tag) {
-		this.tag = tag;
-	}
-
-	public FluidVolume copy() {
-		if (this.isEmpty()) return FluidVolume.EMPTY;
-		FluidVolume stack = new FluidVolume(this.fluid, this.amount);
-		if (this.hasTag()) stack.setTag(this.getTag());
-		return stack;
-	}
-
-	public static FluidVolume fromTag(CompoundTag tag) {
-		return new FluidVolume(tag);
-	}
-
-	public CompoundTag toTag(CompoundTag tag) {
-		tag.putString("Id", Registry.FLUID.getId(getFluid()).toString());
-
-		tag.put("Amount", amount.serialize(NbtOps.INSTANCE));
-
-		if (this.tag != null) {
-			tag.put("Tag", this.tag.copy());
-		}
-
-		return tag;
-	}
+        return tag;
+    }
 }
